@@ -87,6 +87,24 @@ Goal: broaden what Bossman handles and deepen guardrails.
 
 ---
 
+## Continuous tracks (run alongside every phase)
+
+These are the moat. They start as the working code already in `/lib/` and harden
+over time — they are never "done".
+
+- **Frontier track — the router stays best.** Wire `sync.ts` adapters to real
+  provider catalogs (Phase 1–2) so new models auto-register; stand up the eval
+  loop feeding `calibrateFromEvals` (Phase 4+) so the registry self-tunes from
+  outcomes. Goal: a new SOTA model wins traffic within hours of release, untouched.
+- **Evolution track — agents personalize.** Persist `agent_brain` +
+  `feedback_event` (Phase 1); start folding real owner actions into brains
+  (Phase 3); expose tone/affinity/autonomy in the UI (Phase 5); let proven
+  agents relax low-risk gates (Phase 5–6). Goal: measurable per-tenant lift the
+  longer an owner stays.
+- **Multi-tenant track — scale to many owners.** RLS isolation from day one
+  (Phase 1); conversational onboarding that writes the `workspace` from the
+  owner's own words (Phase 6); per-tenant secrets + cost controls.
+
 ## Sequencing rules of thumb
 - **SMS before voice** — cheaper to build, same loop, faster iteration.
 - **Two workers + one approval gate** beats eight half-built workers.

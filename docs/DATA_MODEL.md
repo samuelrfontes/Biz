@@ -160,6 +160,62 @@ credentials jsonb (encrypted), config jsonb`
 Mostly derived, but a small table tracks per-business worker config:
 `business_id fk, worker_type, enabled bool, default_model, allowed_tools text[]`.
 
+## Frontier & evolution tables
+
+These power "you never pick a model" and "your agents evolve". They mirror
+`/lib/router/` and `/lib/evolution/`.
+
+### model_profile (the registry)
+Platform-global (not tenant-scoped). Kept current by the sync job.
+| column | type | notes |
+| --- | --- | --- |
+| id | text pk | canonical model id, e.g. `claude-opus-4-8` |
+| label, provider | text | |
+| status | enum | ga \| preview \| deprecated |
+| released_at | date | drives the recency tie-break |
+| context_tokens | int | |
+| modalities | text[] | text, image_in, audio_in, audio_out, image_out |
+| caps | jsonb | normalized 0..1 capability scores |
+| rel_cost | numeric | display signal (higher = cheaper) |
+| source | enum | seed \| sync |
+| updated_at | timestamptz | |
+
+### route_decision (audit of every routing call)
+`id, business_id fk, plan_step_id fk?, objective, spec jsonb, chosen_model_id fk,
+ranked jsonb, fallbacks text[], explanation text, created_at` — so every model
+choice is explainable after the fact.
+
+### model_eval (self-calibration signal)
+`id, model_id fk, business_id fk?, capability, success bool, n int, window date`
+— aggregated into `caps` updates by `calibrateFromEvals`. Optionally per-tenant
+so the registry can specialize globally while affinity specializes per tenant.
+
+### agent_brain (per-tenant, per-worker)
+| column | type | notes |
+| --- | --- | --- |
+| id | uuid pk | |
+| business_id | uuid fk | |
+| worker_type | enum | one brain per worker per tenant |
+| proficiency | numeric | 0..1 |
+| model_affinity | jsonb | `{model_id: 0..1}` |
+| tone | jsonb | warmth/formality/brevity/assertiveness/playfulness |
+| learned_preferences | text[] | human-readable, shown in UI |
+| stats | jsonb | approved/edited/declined/runs |
+| evolution_level | numeric | 0..1 (derived) |
+| updated_at | timestamptz | |
+
+### feedback_event (the training signal, append-only)
+`id, business_id fk, worker_type, kind (approved|edited|declined|outcome_good|
+outcome_bad|explicit), model_id fk?, note text, tone_signal jsonb, ref_id uuid?,
+created_at`. The brain is the fold of these events (`replay`), so it's always
+reconstructable and auditable.
+
+### workspace
+The tenant's self-description, captured at onboarding. In practice these columns
+live on `business` (+ a couple of jsonb fields): `mandate text` (the owner's own
+words), `tone_words text[]`, `enabled_workers text[]`. Deliberately free-text —
+Bossman configures itself from it, so the product is never niche-locked.
+
 ## Enums
 
 ```sql

@@ -3,28 +3,37 @@ import { BossmanConsole } from "@/components/BossmanConsole";
 import { Card, money, Pill, RiskBadge } from "@/components/ui";
 import {
   approvals,
-  business,
   conversations,
   currentPlan,
   metrics,
 } from "@/lib/data";
 import { WORKER_META } from "@/lib/types";
+import { activeWorkspace } from "@/lib/workspaces";
+import { route } from "@/lib/router/router";
+import { evolvedBrains } from "@/lib/evolution/seed";
 
 export default function Home() {
+  const liveModel = route({ objective: "on_brand_writing" }).chosen.label;
+  const brains = evolvedBrains(activeWorkspace.enabledWorkers);
+  const avgEvolution = Math.round(
+    (brains.reduce((s, b) => s + b.evolutionLevel, 0) / Math.max(1, brains.length)) * 100,
+  );
+
   return (
     <div className="space-y-8">
       {/* hero */}
       <header className="flex flex-col gap-1">
         <div className="flex items-center gap-2 text-xs font-medium uppercase tracking-widest text-brass-400">
           <span className="h-1.5 w-1.5 rounded-full bg-brass-400" />
-          The AI operator you can call
+          The operator between you and every AI
         </div>
         <h1 className="text-2xl font-bold tracking-tight text-white md:text-3xl">
-          Good morning. {business.name} is running.
+          Good morning. {activeWorkspace.name} is running.
         </h1>
         <p className="max-w-2xl text-sm text-white/55">
-          Talk to Bossman like you'd talk to a real operator. It understands the goal, makes a
-          plan, puts your AI workforce on it, and checks back only when it needs you.
+          Talk to Bossman like you'd talk to a real operator. It understands the goal, picks the
+          best AI model for each job, puts your evolving workforce on it, and checks back only when
+          it needs you.
         </p>
       </header>
 
@@ -49,6 +58,28 @@ export default function Home() {
 
         {/* right rail */}
         <div className="space-y-6 lg:col-span-2">
+          {/* the engine: routing + evolution */}
+          <div className="grid grid-cols-2 gap-3">
+            <Link href="/intelligence">
+              <Card className="h-full p-4 transition hover:border-white/15">
+                <div className="text-[11px] uppercase tracking-wide text-white/40">
+                  Auto-routing to
+                </div>
+                <div className="mt-1 text-sm font-bold text-brass-400">{liveModel}</div>
+                <div className="mt-0.5 text-[11px] text-white/40">best model, picked for you →</div>
+              </Card>
+            </Link>
+            <Link href="/evolution">
+              <Card className="h-full p-4 transition hover:border-white/15">
+                <div className="text-[11px] uppercase tracking-wide text-white/40">
+                  Workforce evolution
+                </div>
+                <div className="mt-1 text-sm font-bold text-white">{avgEvolution}%</div>
+                <div className="mt-0.5 text-[11px] text-white/40">learning your business →</div>
+              </Card>
+            </Link>
+          </div>
+
           {/* clarification / approvals needed */}
           <Card className="p-5">
             <div className="mb-3 flex items-center justify-between">

@@ -354,10 +354,12 @@ function BlockView({
               <RiskBadge risk={block.risk} />
             </div>
             <div className="text-xs text-white/55">{block.detail}</div>
-            <div className="mt-1.5 flex items-center gap-2 text-[11px] text-white/35">
+            <div className="mt-1.5 flex flex-wrap items-center gap-2 text-[11px] text-white/35">
               <span className="text-brass-400/80">{meta.title}</span>
               <span>·</span>
-              <span>{block.model}</span>
+              <span className="rounded bg-white/5 px-1.5 py-0.5 text-white/45 ring-1 ring-white/10">
+                ◈ auto-routed → {block.model}
+              </span>
               <span className="ml-auto inline-flex items-center gap-1 text-signal-green">
                 <span className="h-1.5 w-1.5 rounded-full bg-signal-green" /> done
               </span>

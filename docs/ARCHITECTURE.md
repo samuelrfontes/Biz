@@ -113,6 +113,70 @@ Append-only record of every decision: actor (Bossman or which worker), action,
 model/tool used, outcome, business value, risk. Powers the audit screen and is
 the accountability backbone for trusting AI with real money.
 
+## Staying on the frontier — the Model Router in depth
+
+This is what makes Bossman "the operator between you and every AI", and what
+keeps it the best version of itself forever. Implemented as working code in
+`/lib/router/`.
+
+**The contract:** the user never names a model. Bossman's planner turns a goal
+into a `TaskSpec` (an `objective` + optional priority nudges + hard
+requirements), and `route(spec)` returns the best model, a ranked shortlist, a
+fallback chain, and a human-readable rationale.
+
+- **Registry (`models.ts`)** — every model is a `ModelProfile`: capability
+  scores (0..1 across reasoning, writing, vision, voice, tool-use, long-context,
+  speed, cost…), modalities, context window, status, release date. **Adding a
+  model the day it ships = one entry.** Nothing else changes.
+- **Objectives** — presets that map "what the work needs" to capability weights
+  + hard requirements (`on_brand_writing`, `realtime_voice`, `deep_reasoning`,
+  `long_document`, `fast_cheap`, `vision`, `coding`, `balanced`). This is the
+  layer that lets a caller say *what they want* instead of *which model*.
+- **Scoring (`router.ts`)** — pure, deterministic weighted scoring with hard
+  filters (modality/capability/context/budget), a small **recency tie-break** so
+  "latest & greatest" is the default, and a status penalty for preview/deprecated.
+- **Auto-sync (`sync.ts`)** — `ProviderAdapter`s poll each provider's catalog on
+  a schedule/webhook; `syncModels()` upserts new/changed models and flags
+  deprecations. A brand-new model enters as `preview` with a tier-based capability
+  prior and becomes routable immediately.
+- **Self-calibration** — every routed task logs its outcome (approved? customer
+  replied? completed?). `calibrateFromEvals()` nudges a model's capability scores
+  toward measured success, so the registry **self-tunes from real work** and the
+  right model for *this kind of job* keeps rising.
+
+Net effect: a new state-of-the-art model can start winning Bossman's traffic
+within hours of release, with no code change and nothing for the user to toggle.
+
+## Self-evolving agents
+
+Workers are not static prompts — each keeps an `AgentBrain` **per tenant**
+(`/lib/evolution/`). Every owner action is a `FeedbackEvent` (approved / edited /
+declined / good outcome / bad outcome / explicit preference). `applyFeedback()`
+updates the brain:
+
+- **proficiency** — competence at this tenant's work; gates how much autonomy
+  Bossman grants.
+- **modelAffinity** — per-model success for *this* tenant's tasks; feeds the
+  router tenant-specific evidence on top of the global registry.
+- **tone vector** — warmth/formality/brevity/assertiveness/playfulness, EMA-
+  calibrated toward how the owner actually edits and talks.
+- **learnedPreferences** — human-readable rules the agent has internalized.
+- **autonomyTier** — `training → trusted → autopilot`; as an agent proves itself
+  for a tenant, Bossman relaxes low-risk approval gates (never high-risk).
+
+Because evolution is per-tenant, **no two owners' agents converge** — the
+product is more valuable, and more uniquely theirs, the longer it runs.
+
+## Multi-tenant by design
+
+Bossman is one operator deployed to thousands of owners. Each account is a
+`Workspace` (`/lib/workspaces.ts`) with its own profile, mandate (in the owner's
+own words — not a niche enum), tone, enabled workers, guardrails, memory, and
+evolved brains. Onboarding fills this in conversationally; nothing is
+niche-coded, so the same engine serves a lash studio, a law office, an
+e-commerce brand, a contractor, or a clinic. Isolation is enforced at the data
+layer (Postgres RLS scoped to `business_id`).
+
 ## Async execution
 
 The system is event-driven, not request/response — a conversation kicks off work

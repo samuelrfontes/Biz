@@ -2,11 +2,13 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { business } from "@/lib/data";
+import { activeWorkspace } from "@/lib/workspaces";
 
 const nav = [
   { href: "/", label: "Bossman", icon: "◎", hint: "Call & text" },
   { href: "/workers", label: "AI Workforce", icon: "▦", hint: "Agents" },
+  { href: "/evolution", label: "Evolution", icon: "✦", hint: "Learning" },
+  { href: "/intelligence", label: "Intelligence", icon: "◈", hint: "Models" },
   { href: "/approvals", label: "Approvals", icon: "✓", hint: "Needs you" },
   { href: "/memory", label: "Memory", icon: "❒", hint: "Conversations" },
   { href: "/playbooks", label: "Playbooks", icon: "❡", hint: "Guardrails" },
@@ -57,9 +59,19 @@ export function Sidebar() {
       </nav>
 
       <div className="mt-6 rounded-xl border border-white/8 bg-ink-900/60 p-3">
-        <div className="text-[11px] uppercase tracking-wide text-white/40">Managing</div>
-        <div className="mt-1 text-sm font-semibold text-white">{business.name}</div>
-        <div className="text-xs text-white/45">{business.niche}</div>
+        <div className="flex items-center justify-between">
+          <div className="text-[11px] uppercase tracking-wide text-white/40">Workspace</div>
+          <span className="text-[10px] text-brass-400/80">switch ▾</span>
+        </div>
+        <div className="mt-1 flex items-center gap-2">
+          <span className="text-base">{activeWorkspace.emoji}</span>
+          <div>
+            <div className="text-sm font-semibold leading-tight text-white">
+              {activeWorkspace.name}
+            </div>
+            <div className="text-xs text-white/45">{activeWorkspace.kind}</div>
+          </div>
+        </div>
       </div>
     </aside>
   );
