@@ -94,7 +94,7 @@ export function detectIntent(message: string): DetectedGoal {
 
 // --- step templates (worker + objective per step) ---------------------------
 
-interface StepTemplate {
+export interface StepTemplate {
   worker: WorkerType;
   title: string;
   detail: string;
@@ -136,7 +136,7 @@ const TEMPLATES: Record<Intent, StepTemplate[]> = {
 
 /** Assign a model to one step via the REAL router. Used by both the heuristic
  *  and LLM planners, so model selection is always real and consistent. */
-function routeStep(t: StepTemplate): PlannedStep {
+export function routeStep(t: StepTemplate): PlannedStep {
   const decision = route({ objective: t.objective });
   const topFactors = decision.ranked[0].rationale
     .filter((r) => r.factor !== "recency" && r.contribution > 0.001)
@@ -173,7 +173,7 @@ const VALID_WORKERS = new Set(Object.keys(WORKER_META));
 const VALID_RISK = new Set<RiskLevel>(["low", "medium", "high"]);
 
 /** Validate & normalize one LLM-proposed step into a StepTemplate. */
-function coerceStep(raw: any): StepTemplate | null {
+export function coerceStep(raw: any): StepTemplate | null {
   if (!raw || typeof raw !== "object") return null;
   const worker = raw.worker as WorkerType;
   const objective = raw.objective as Objective;

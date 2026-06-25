@@ -1,9 +1,29 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Beat, frenchNailScript } from "@/lib/scenario";
-import { WORKER_META } from "@/lib/types";
+import { frenchNailScript } from "@/lib/scenario";
+import { WORKER_META, WorkerType } from "@/lib/types";
 import { RiskBadge } from "./ui";
+
+// A beat is one thing Bossman does next. The beats are now built dynamically
+// from the live /api/bossman/converse response — so the conversation actually
+// reflects whatever the owner typed, for any business.
+type Beat =
+  | { kind: "think"; text: string }
+  | { kind: "say"; text: string }
+  | { kind: "ask"; text: string; chips: string[] }
+  | { kind: "plan_open"; goal: string; constraints: string[] }
+  | {
+      kind: "delegate";
+      worker: WorkerType;
+      title: string;
+      model: string;
+      detail: string;
+      rationale?: string;
+      risk: "low" | "medium" | "high";
+    }
+  | { kind: "approval"; title: string; preview: string; reason: string }
+  | { kind: "report"; lines: string[] };
 
 type Block =
   | { t: "owner"; text: string }
@@ -12,24 +32,73 @@ type Block =
   | { t: "plan"; goal: string; constraints: string[] }
   | {
       t: "delegate";
-      worker: keyof typeof WORKER_META;
+      worker: WorkerType;
       title: string;
       model: string;
       detail: string;
+      rationale?: string;
       risk: "low" | "medium" | "high";
     }
-  | {
-      t: "approval";
-      title: string;
-      preview: string;
-      reason: string;
-      decided?: "approved" | "edited";
-    }
+  | { t: "approval"; title: string; preview: string; reason: string; decided?: "approved" | "edited" }
   | { t: "report"; lines: string[] };
 
 type Phase = "idle" | "playing" | "awaiting_chip" | "awaiting_approval" | "done";
 
-const beats = frenchNailScript.beats;
+interface ConverseResult {
+  reply: string;
+  clarifyingQuestion: string | null;
+  quickReplies: string[];
+  goal: string;
+  constraints: string[];
+  steps: {
+    worker: WorkerType;
+    title: string;
+    detail: string;
+    model: string;
+    rationale: string;
+    risk: "low" | "medium" | "high";
+  }[];
+  approval: { title: string; preview: string; reason: string } | null;
+  report: string[];
+  poweredBy: "claude" | "heuristic";
+}
+
+/** Turn the brain's response into the sequence of beats the console plays. */
+function buildBeats(r: ConverseResult): Beat[] {
+  const beats: Beat[] = [{ kind: "think", text: "Reading your business, calendar, and guardrails…" }];
+  beats.push({ kind: "say", text: r.reply });
+  if (r.clarifyingQuestion) {
+    beats.push({
+      kind: "ask",
+      text: r.clarifyingQuestion,
+      chips: r.quickReplies.length ? r.quickReplies : ["Go ahead"],
+    });
+  }
+  beats.push({ kind: "say", text: "Here's my plan." });
+  beats.push({ kind: "plan_open", goal: r.goal, constraints: r.constraints });
+  for (const s of r.steps) {
+    beats.push({
+      kind: "delegate",
+      worker: s.worker,
+      title: s.title,
+      model: s.model,
+      detail: s.detail,
+      rationale: s.rationale,
+      risk: s.risk,
+    });
+  }
+  if (r.approval) {
+    beats.push({ kind: "approval", title: r.approval.title, preview: r.approval.preview, reason: r.approval.reason });
+    beats.push({
+      kind: "say",
+      text: "Approved — putting it in motion now. I'll only ping you if something needs a real decision.",
+    });
+  } else {
+    beats.push({ kind: "say", text: "Nothing here needs your sign-off, so I'm running it now." });
+  }
+  if (r.report.length) beats.push({ kind: "report", lines: r.report });
+  return beats;
+}
 
 export function BossmanConsole() {
   const [mode, setMode] = useState<"call" | "text">("text");
@@ -37,10 +106,8 @@ export function BossmanConsole() {
   const [blocks, setBlocks] = useState<Block[]>([]);
   const [phase, setPhase] = useState<Phase>("idle");
   const [chips, setChips] = useState<string[]>([]);
-  // Models the real router picked for this run, keyed by worker type.
-  const [routeMap, setRouteMap] = useState<
-    Record<string, { model: string; rationale: string }>
-  >({});
+  const [poweredBy, setPoweredBy] = useState<"claude" | "heuristic" | null>(null);
+  const beatsRef = useRef<Beat[]>([]);
   const resumeIdx = useRef<number>(0);
   const timers = useRef<ReturnType<typeof setTimeout>[]>([]);
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -49,24 +116,23 @@ export function BossmanConsole() {
     timers.current.forEach(clearTimeout);
     timers.current = [];
   };
-
   const schedule = (fn: () => void, ms: number) => {
     const id = setTimeout(fn, ms);
     timers.current.push(id);
   };
 
   useEffect(() => () => clearTimers(), []);
-
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
   }, [blocks, phase]);
 
   const advance = useCallback((idx: number) => {
+    const beats = beatsRef.current;
     if (idx >= beats.length) {
       setPhase("done");
       return;
     }
-    const beat: Beat = beats[idx];
+    const beat = beats[idx];
     setPhase("playing");
 
     switch (beat.kind) {
@@ -75,7 +141,7 @@ export function BossmanConsole() {
         schedule(() => {
           setBlocks((b) => b.filter((x) => x.t !== "think"));
           advance(idx + 1);
-        }, 1200);
+        }, 1100);
         break;
       case "say":
         setBlocks((b) => [...b, { t: "bossman", text: beat.text }]);
@@ -100,6 +166,7 @@ export function BossmanConsole() {
             title: beat.title,
             model: beat.model,
             detail: beat.detail,
+            rationale: beat.rationale,
             risk: beat.risk,
           },
         ]);
@@ -127,34 +194,39 @@ export function BossmanConsole() {
     setChips([]);
     setPhase("playing");
 
-    // Ask the real planner which model to route each step to. The conversation
-    // beats stay scripted; the model choices are computed live by route().
+    let result: ConverseResult | null = null;
     try {
-      const res = await fetch("/api/bossman/plan", {
+      const res = await fetch("/api/bossman/converse", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ message: opener }),
       });
-      if (res.ok) {
-        const plan = await res.json();
-        const map: Record<string, { model: string; rationale: string }> = {};
-        for (const s of plan.steps ?? []) {
-          map[s.worker] = { model: s.model, rationale: s.rationale };
-        }
-        setRouteMap(map);
-      }
+      if (res.ok) result = (await res.json()) as ConverseResult;
     } catch {
-      // Offline / API down: delegate blocks fall back to their scripted model.
+      /* fall through to local fallback */
     }
-    schedule(() => advance(0), 500);
+
+    if (!result) {
+      // Network failure: a minimal local beat so the UI never dead-ends.
+      beatsRef.current = [
+        { kind: "say", text: "I'm on it — give me one second to line up your workforce." },
+        { kind: "report", lines: ["Connection hiccup — try again in a moment."] },
+      ];
+      setPoweredBy(null);
+    } else {
+      setPoweredBy(result.poweredBy);
+      beatsRef.current = buildBeats(result);
+    }
+    schedule(() => advance(0), 450);
   };
 
   const reset = () => {
     clearTimers();
+    beatsRef.current = [];
     setBlocks([]);
     setChips([]);
-    setRouteMap({});
     setPhase("idle");
+    setPoweredBy(null);
     setInput(frenchNailScript.ownerOpener);
   };
 
@@ -165,9 +237,7 @@ export function BossmanConsole() {
   };
 
   const onApprove = (decided: "approved" | "edited") => {
-    setBlocks((b) =>
-      b.map((x) => (x.t === "approval" && !x.decided ? { ...x, decided } : x)),
-    );
+    setBlocks((b) => b.map((x) => (x.t === "approval" && !x.decided ? { ...x, decided } : x)));
     schedule(() => advance(resumeIdx.current), 500);
   };
 
@@ -183,7 +253,14 @@ export function BossmanConsole() {
             <span className="absolute -bottom-0.5 -right-0.5 h-3 w-3 rounded-full border-2 border-ink-950 bg-signal-green" />
           </div>
           <div>
-            <div className="text-sm font-semibold text-white">Bossman</div>
+            <div className="flex items-center gap-2 text-sm font-semibold text-white">
+              Bossman
+              {poweredBy === "claude" && (
+                <span className="rounded-full bg-brass-500/15 px-2 py-0.5 text-[10px] font-medium text-brass-400 ring-1 ring-brass-500/25">
+                  live · Claude
+                </span>
+              )}
+            </div>
             <div className="text-[11px] text-white/45">
               {phase === "playing"
                 ? "Working…"
@@ -222,7 +299,7 @@ export function BossmanConsole() {
         )}
 
         {blocks.map((b, i) => (
-          <BlockView key={i} block={b} onApprove={onApprove} routeMap={routeMap} />
+          <BlockView key={i} block={b} onApprove={onApprove} />
         ))}
 
         {phase === "awaiting_chip" && chips.length > 0 && (
@@ -257,7 +334,7 @@ export function BossmanConsole() {
                   onClick={reset}
                   className="shrink-0 rounded-xl bg-white/10 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-white/15"
                 >
-                  Replay
+                  New
                 </button>
               ) : (
                 <button
@@ -316,11 +393,9 @@ function Avatar({ who }: { who: "owner" | "bossman" }) {
 function BlockView({
   block,
   onApprove,
-  routeMap,
 }: {
   block: Block;
   onApprove: (d: "approved" | "edited") => void;
-  routeMap: Record<string, { model: string; rationale: string }>;
 }) {
   switch (block.t) {
     case "owner":
@@ -359,22 +434,22 @@ function BlockView({
             Action Plan
           </div>
           <div className="text-sm font-medium text-white">{block.goal}</div>
-          <div className="mt-3 flex flex-wrap gap-1.5">
-            {block.constraints.map((c) => (
-              <span
-                key={c}
-                className="rounded-md bg-white/5 px-2 py-1 text-[11px] text-white/60 ring-1 ring-white/10"
-              >
-                {c}
-              </span>
-            ))}
-          </div>
+          {block.constraints.length > 0 && (
+            <div className="mt-3 flex flex-wrap gap-1.5">
+              {block.constraints.map((c) => (
+                <span
+                  key={c}
+                  className="rounded-md bg-white/5 px-2 py-1 text-[11px] text-white/60 ring-1 ring-white/10"
+                >
+                  {c}
+                </span>
+              ))}
+            </div>
+          )}
         </div>
       );
     case "delegate": {
       const meta = WORKER_META[block.worker];
-      const routed = routeMap[block.worker];
-      const model = routed?.model ?? block.model;
       return (
         <div className="ml-11 flex items-start gap-3 rounded-xl border border-white/8 bg-ink-800/60 p-3 animate-fade-up">
           <div className="text-xl">{meta.emoji}</div>
@@ -389,10 +464,10 @@ function BlockView({
               <span>·</span>
               <span
                 className="rounded bg-white/5 px-1.5 py-0.5 text-white/45 ring-1 ring-white/10"
-                title={routed ? `Router: ${routed.rationale}` : undefined}
+                title={block.rationale ? `Router: ${block.rationale}` : undefined}
               >
-                ◈ auto-routed → {model}
-                {routed ? ` · ${routed.rationale}` : ""}
+                ◈ auto-routed → {block.model}
+                {block.rationale ? ` · ${block.rationale}` : ""}
               </span>
               <span className="ml-auto inline-flex items-center gap-1 text-signal-green">
                 <span className="h-1.5 w-1.5 rounded-full bg-signal-green" /> done
