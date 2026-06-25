@@ -54,6 +54,7 @@ the demo business **French Nail & Lashes**.
 
 | Screen | What it shows |
 | --- | --- |
+| **Onboarding** (`/onboarding`) | The front door. A new owner describes their business in plain words; Bossman configures a whole workspace — name, kind, mandate, tone, which agents to activate, starter guardrails. Works for any niche (real, computed). |
 | **Bossman** (`/`) | The hero. An interactive console: talk to Bossman and watch it ask a clarifying question, build a plan, delegate to workers, gate an approval, and report back. Plus live metrics, current plan, and what needs you. |
 | **AI Workforce** (`/workers`) | The agents under Bossman — status, current task, which model they're routed to, tasks done, ROI, risk. |
 | **Evolution** (`/evolution`) | Each agent's brain: how much it's learned about you, its proficiency, the model that performs best for *your* customers, learned preferences, and its autonomy tier (training → trusted → autopilot). Real, computed from a feedback history. |
@@ -97,8 +98,24 @@ Requires Node 18.18+.
 - **Multi-tenant workspaces** — `/lib/workspaces.ts`. Several example owners
   across different niches prove the engine is not niche-locked.
 
-The scripted demo lives in `/lib/scenario.ts` (a "beat sheet" the console
-plays). In production those beats are real events emitted by the orchestrator.
+- **Conversation → action, live** — `/lib/bossman/planner.ts` +
+  `POST /api/bossman/plan`. An owner's message is parsed into an intent +
+  constraints, broken into steps, and each step's model is chosen by the real
+  router. The console renders the live decisions. `/lib/bossman/onboard.ts` +
+  `POST /api/bossman/onboard` configures a whole workspace from a description.
+
+### Turning on the real brain (optional)
+The planner and onboarding run on a deterministic heuristic so the app works
+offline. Set an API key and they upgrade to Claude automatically — same
+endpoints, same UI:
+
+```bash
+export ANTHROPIC_API_KEY=sk-ant-...      # turns on LLM planning/onboarding
+export BOSSMAN_PLANNER_MODEL=claude-opus-4-8   # optional override
+```
+
+The seam is `/lib/bossman/llm.ts`; if the key is absent, every call falls back
+cleanly to the heuristic. The scripted console demo lives in `/lib/scenario.ts`.
 
 ## Docs
 

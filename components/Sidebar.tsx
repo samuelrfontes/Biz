@@ -61,7 +61,9 @@ export function Sidebar() {
       <div className="mt-6 rounded-xl border border-white/8 bg-ink-900/60 p-3">
         <div className="flex items-center justify-between">
           <div className="text-[11px] uppercase tracking-wide text-white/40">Workspace</div>
-          <span className="text-[10px] text-brass-400/80">switch ▾</span>
+          <Link href="/onboarding" className="text-[10px] text-brass-400/80 hover:text-brass-400">
+            + new
+          </Link>
         </div>
         <div className="mt-1 flex items-center gap-2">
           <span className="text-base">{activeWorkspace.emoji}</span>
