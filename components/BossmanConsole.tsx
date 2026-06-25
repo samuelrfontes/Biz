@@ -37,6 +37,10 @@ export function BossmanConsole() {
   const [blocks, setBlocks] = useState<Block[]>([]);
   const [phase, setPhase] = useState<Phase>("idle");
   const [chips, setChips] = useState<string[]>([]);
+  // Models the real router picked for this run, keyed by worker type.
+  const [routeMap, setRouteMap] = useState<
+    Record<string, { model: string; rationale: string }>
+  >({});
   const resumeIdx = useRef<number>(0);
   const timers = useRef<ReturnType<typeof setTimeout>[]>([]);
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -116,11 +120,32 @@ export function BossmanConsole() {
     }
   }, []);
 
-  const start = () => {
+  const start = async () => {
     clearTimers();
     const opener = input.trim() || frenchNailScript.ownerOpener;
     setBlocks([{ t: "owner", text: opener }]);
     setChips([]);
+    setPhase("playing");
+
+    // Ask the real planner which model to route each step to. The conversation
+    // beats stay scripted; the model choices are computed live by route().
+    try {
+      const res = await fetch("/api/bossman/plan", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ message: opener }),
+      });
+      if (res.ok) {
+        const plan = await res.json();
+        const map: Record<string, { model: string; rationale: string }> = {};
+        for (const s of plan.steps ?? []) {
+          map[s.worker] = { model: s.model, rationale: s.rationale };
+        }
+        setRouteMap(map);
+      }
+    } catch {
+      // Offline / API down: delegate blocks fall back to their scripted model.
+    }
     schedule(() => advance(0), 500);
   };
 
@@ -128,6 +153,7 @@ export function BossmanConsole() {
     clearTimers();
     setBlocks([]);
     setChips([]);
+    setRouteMap({});
     setPhase("idle");
     setInput(frenchNailScript.ownerOpener);
   };
@@ -196,7 +222,7 @@ export function BossmanConsole() {
         )}
 
         {blocks.map((b, i) => (
-          <BlockView key={i} block={b} onApprove={onApprove} />
+          <BlockView key={i} block={b} onApprove={onApprove} routeMap={routeMap} />
         ))}
 
         {phase === "awaiting_chip" && chips.length > 0 && (
@@ -290,9 +316,11 @@ function Avatar({ who }: { who: "owner" | "bossman" }) {
 function BlockView({
   block,
   onApprove,
+  routeMap,
 }: {
   block: Block;
   onApprove: (d: "approved" | "edited") => void;
+  routeMap: Record<string, { model: string; rationale: string }>;
 }) {
   switch (block.t) {
     case "owner":
@@ -345,6 +373,8 @@ function BlockView({
       );
     case "delegate": {
       const meta = WORKER_META[block.worker];
+      const routed = routeMap[block.worker];
+      const model = routed?.model ?? block.model;
       return (
         <div className="ml-11 flex items-start gap-3 rounded-xl border border-white/8 bg-ink-800/60 p-3 animate-fade-up">
           <div className="text-xl">{meta.emoji}</div>
@@ -357,8 +387,12 @@ function BlockView({
             <div className="mt-1.5 flex flex-wrap items-center gap-2 text-[11px] text-white/35">
               <span className="text-brass-400/80">{meta.title}</span>
               <span>·</span>
-              <span className="rounded bg-white/5 px-1.5 py-0.5 text-white/45 ring-1 ring-white/10">
-                ◈ auto-routed → {block.model}
+              <span
+                className="rounded bg-white/5 px-1.5 py-0.5 text-white/45 ring-1 ring-white/10"
+                title={routed ? `Router: ${routed.rationale}` : undefined}
+              >
+                ◈ auto-routed → {model}
+                {routed ? ` · ${routed.rationale}` : ""}
               </span>
               <span className="ml-auto inline-flex items-center gap-1 text-signal-green">
                 <span className="h-1.5 w-1.5 rounded-full bg-signal-green" /> done
