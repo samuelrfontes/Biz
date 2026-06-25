@@ -19,6 +19,6 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "message is required" }, { status: 400 });
   }
 
-  const plan = buildPlan(message);
+  const plan = await buildPlan(message);
   return NextResponse.json(plan);
 }
