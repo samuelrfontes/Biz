@@ -218,7 +218,7 @@ export default function OnboardingPage() {
             a real operator — it&apos;ll take it from there.
           </p>
           <Link
-            href="/"
+            href="/dashboard"
             className="mt-6 inline-block rounded-xl bg-brass-500 px-6 py-3 text-sm font-semibold text-ink-950 transition hover:bg-brass-400"
           >
             Go to my Bossman

@@ -5,7 +5,7 @@ import { usePathname } from "next/navigation";
 import { activeWorkspace } from "@/lib/workspaces";
 
 const nav = [
-  { href: "/", label: "Bossman", icon: "◎", hint: "Call & text" },
+  { href: "/dashboard", label: "Bossman", icon: "◎", hint: "Call & text" },
   { href: "/workers", label: "AI Workforce", icon: "▦", hint: "Agents" },
   { href: "/evolution", label: "Evolution", icon: "✦", hint: "Learning" },
   { href: "/intelligence", label: "Intelligence", icon: "◈", hint: "Models" },
@@ -20,7 +20,7 @@ export function Sidebar() {
   const pathname = usePathname();
   return (
     <aside className="sticky top-0 hidden h-screen w-64 shrink-0 flex-col border-r border-white/[0.07] bg-ink-950/70 px-4 py-6 backdrop-blur-xl md:flex">
-      <Link href="/" className="mb-8 flex items-center gap-3 px-2">
+      <Link href="/dashboard" className="mb-8 flex items-center gap-3 px-2">
         <div className="flex h-9 w-9 items-center justify-center rounded-2xl bg-gradient-to-b from-brass-400 to-brass-600 text-lg font-black text-ink-950 shadow-md">
           B
         </div>
@@ -32,8 +32,7 @@ export function Sidebar() {
 
       <nav className="flex flex-1 flex-col gap-0.5">
         {nav.map((item) => {
-          const active =
-            item.href === "/" ? pathname === "/" : pathname.startsWith(item.href);
+          const active = pathname === item.href || pathname.startsWith(item.href + "/");
           return (
             <Link
               key={item.href}
