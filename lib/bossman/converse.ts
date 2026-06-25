@@ -38,9 +38,30 @@ export interface ConverseResult {
   poweredBy: "claude" | "heuristic";
 }
 
+export interface Turn {
+  role: "owner" | "bossman";
+  text: string;
+}
+
 // --- heuristic fallback (no key) -------------------------------------------
 
-function heuristicConverse(message: string): ConverseResult {
+function heuristicConverse(message: string, history: Turn[] = []): ConverseResult {
+  // A follow-up turn (owner is answering/chatting) — just acknowledge, no re-plan.
+  if (history.length > 0) {
+    return {
+      reply:
+        "Got it — noted. I'll fold that in. Anything else you want me to handle?",
+      clarifyingQuestion: null,
+      quickReplies: [],
+      goal: "",
+      constraints: [],
+      steps: [],
+      approval: null,
+      report: [],
+      poweredBy: "heuristic",
+    };
+  }
+
   const plan = buildPlanHeuristic(message);
   const detected = detectIntent(message);
 
@@ -97,25 +118,31 @@ interface RawConverse {
   report?: string[];
 }
 
-export async function converse(message: string): Promise<ConverseResult> {
-  if (!isLLMEnabled()) return heuristicConverse(message);
+export async function converse(message: string, history: Turn[] = []): Promise<ConverseResult> {
+  if (!isLLMEnabled()) return heuristicConverse(message, history);
 
   const workerList = Object.entries(WORKER_META)
     .map(([k, v]) => `${k} (${v.title})`)
     .join(", ");
   const objectiveList = Object.keys(OBJECTIVES).join(", ");
 
+  const transcript = history.length
+    ? "Conversation so far:\n" +
+      history.map((t) => `${t.role === "owner" ? "Owner" : "Bossman"}: ${t.text}`).join("\n") +
+      "\n\n"
+    : "";
+
   const raw = await completeJSON<RawConverse>({
     system:
       "You are Bossman — an AI operator a small-business owner talks to like a real, sharp human manager. You understand the goal, make a plan, delegate to specialized AI worker agents, and gate risky actions for approval. Warm, confident, concise. Never robotic. You work for ANY kind of business; adapt to whatever they describe.",
-    user: `The owner just said: "${message}"
+    user: `${transcript}The owner just said: "${message}"
 
 Respond as Bossman with a JSON object:
 {
   "reply": "1-2 sentences, natural and specific to what they said — like a great operator who just got it",
   "clarifyingQuestion": "one genuinely useful question, or null if none needed",
   "quickReplies": ["2-3 short tappable answers to that question", "..."],
-  "goal": "one sentence: what success looks like",
+  "goal": "one sentence: what success looks like (only if there's a concrete task)",
   "constraints": ["any limits/rules they stated (budgets, tone, approvals)"],
   "steps": [
     {
@@ -130,18 +157,38 @@ Respond as Bossman with a JSON object:
   "approval": { "title": "what needs your OK", "preview": "the EXACT message or action text you'd send", "reason": "why it needs approval" } OR null,
   "report": ["3-4 short bullet lines of what got done / results, as if reporting back later"]
 }
-Pick 2-5 steps. Make it specific to their actual request and business. Output ONLY the JSON.`,
+
+IMPORTANT: Only fill in goal/steps/approval/report when the owner has given you a concrete NEW task to execute. If they're just chatting, greeting you, answering your question, or refining details, return an EMPTY "steps" array, empty "report", null "approval", and just reply conversationally (with a clarifying question if useful). When there is a task, pick 2-5 steps and make it specific to their request and business. Output ONLY the JSON.`,
     maxTokens: 1500,
   });
 
-  if (!raw) return heuristicConverse(message);
+  if (!raw) return heuristicConverse(message, history);
 
-  const steps: PlannedStep[] = (raw.steps ?? [])
+  // No steps proposed → a pure conversational turn. Return the reply only.
+  const rawSteps = Array.isArray(raw.steps) ? raw.steps : [];
+  if (rawSteps.length === 0) {
+    const clean0 = (s: unknown, max = 240) => String(s ?? "").slice(0, max);
+    return {
+      reply: clean0(raw.reply) || "Got it.",
+      clarifyingQuestion: raw.clarifyingQuestion ? clean0(raw.clarifyingQuestion) : null,
+      quickReplies: Array.isArray(raw.quickReplies)
+        ? raw.quickReplies.map((q) => clean0(q, 40)).slice(0, 3)
+        : [],
+      goal: "",
+      constraints: [],
+      steps: [],
+      approval: null,
+      report: [],
+      poweredBy: "claude",
+    };
+  }
+
+  const steps: PlannedStep[] = rawSteps
     .map(coerceStep)
     .filter((s): s is StepTemplate => s !== null)
     .map(routeStep);
 
-  if (steps.length === 0) return heuristicConverse(message);
+  if (steps.length === 0) return heuristicConverse(message, history);
 
   // If the model flagged a step but gave no approval block, synthesize one.
   let approval: ConverseApproval | null = null;
@@ -163,7 +210,7 @@ Pick 2-5 steps. Make it specific to their actual request and business. Output ON
 
   const clean = (s: unknown, max = 240) => String(s ?? "").slice(0, max);
   return {
-    reply: clean(raw.reply) || heuristicConverse(message).reply,
+    reply: clean(raw.reply) || "On it.",
     clarifyingQuestion: raw.clarifyingQuestion ? clean(raw.clarifyingQuestion) : null,
     quickReplies: Array.isArray(raw.quickReplies)
       ? raw.quickReplies.map((q) => clean(q, 40)).slice(0, 3)

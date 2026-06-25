@@ -19,18 +19,18 @@ const nav = [
 export function Sidebar() {
   const pathname = usePathname();
   return (
-    <aside className="sticky top-0 hidden h-screen w-64 shrink-0 flex-col border-r border-white/8 bg-ink-950/80 px-4 py-6 md:flex">
+    <aside className="sticky top-0 hidden h-screen w-64 shrink-0 flex-col border-r border-white/[0.07] bg-ink-950/70 px-4 py-6 backdrop-blur-xl md:flex">
       <Link href="/" className="mb-8 flex items-center gap-3 px-2">
-        <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-brass-500/15 text-lg font-black text-brass-400 ring-1 ring-brass-500/30">
+        <div className="flex h-9 w-9 items-center justify-center rounded-2xl bg-gradient-to-b from-brass-400 to-brass-600 text-lg font-black text-ink-950 shadow-md">
           B
         </div>
         <div>
-          <div className="text-sm font-bold tracking-tight text-white">Bossman</div>
+          <div className="text-[15px] font-semibold tracking-tight text-white">Bossman</div>
           <div className="text-[11px] text-white/40">The operator you can call</div>
         </div>
       </Link>
 
-      <nav className="flex flex-1 flex-col gap-1">
+      <nav className="flex flex-1 flex-col gap-0.5">
         {nav.map((item) => {
           const active =
             item.href === "/" ? pathname === "/" : pathname.startsWith(item.href);
@@ -38,10 +38,10 @@ export function Sidebar() {
             <Link
               key={item.href}
               href={item.href}
-              className={`group flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm transition ${
+              className={`group flex items-center gap-3 rounded-2xl px-3 py-2.5 text-sm transition ${
                 active
-                  ? "bg-white/8 text-white ring-1 ring-white/10"
-                  : "text-white/55 hover:bg-white/5 hover:text-white"
+                  ? "bg-white/[0.08] text-white shadow-sm ring-1 ring-white/10"
+                  : "text-white/55 hover:bg-white/[0.04] hover:text-white"
               }`}
             >
               <span
@@ -50,9 +50,7 @@ export function Sidebar() {
                 {item.icon}
               </span>
               <span className="flex-1 font-medium">{item.label}</span>
-              <span className="text-[10px] uppercase tracking-wide text-white/25">
-                {item.hint}
-              </span>
+              {active && <span className="h-1.5 w-1.5 rounded-full bg-brass-400" />}
             </Link>
           );
         })}
